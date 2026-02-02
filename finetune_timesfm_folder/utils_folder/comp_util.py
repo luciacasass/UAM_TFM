@@ -6,6 +6,7 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller
@@ -135,7 +136,10 @@ def evaluate(model, loader, loss_fn, device, target_idx=None):
         x = x.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
 
-        target = y[:, target_idx] if target_idx is not None else y
+        if target_idx is not None:
+            target = y[:, target_idx].unsqueeze(-1) # Ensures shape [Batch, 1]
+        else:
+            target = y
 
         if x.dim() == 2:
             x = x.unsqueeze(-1)
@@ -159,23 +163,34 @@ def train_with_early_stopping(
     best_state = None
     patience_ctr = 0
 
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+
     for _ in range(max_epochs):
         model.train()
         for x, _, _, y in train_loader:
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
 
-            target = y[:, target_idx] if target_idx is not None else y
+            if target_idx is not None:
+                target = y[:, target_idx].unsqueeze(-1) # Ensures shape [Batch, 1]
+            else:
+                target = y
 
             if x.dim() == 2:
                 x = x.unsqueeze(-1)
 
             optimizer.zero_grad(set_to_none=True)
-            loss = loss_fn(model(x), target)
+
+            output = model(x)
+            if output.shape != target.shape:
+                output = output.view(target.shape)
+
+            loss = loss_fn(output, target)
             loss.backward()
             optimizer.step()
 
         val_loss = evaluate(model, val_loader, loss_fn, device, target_idx=target_idx)
+        scheduler.step(val_loss)
 
         if val_loss < best_loss:
             best_loss = val_loss
