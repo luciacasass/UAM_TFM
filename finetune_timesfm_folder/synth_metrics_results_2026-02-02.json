@@ -1,0 +1,120 @@
+{
+    "freq_type": 0,
+    "is_real_data": false,
+    "experiments": [
+        {
+            "context_length": 256,
+            "horizon": 1,
+            "metrics": {
+                "TimesFM ZeroShot": {
+                    "RMSE": 0.4716346115360977,
+                    "Inference_Time": 12.471024990081787
+                },
+                "TimesFM Finetuned": {
+                    "RMSE": 0.11292691459894211,
+                    "Training_Time": 2112.1405804157257,
+                    "Inference_Time": 11.894858598709106
+                },
+                "ARIMA": {
+                    "RMSE": 0.15803596484761062,
+                    "Inference_Time": 64.18285298347473
+                },
+                "Persistence": {
+                    "RMSE": 0.1873014271259308,
+                    "Inference_Time": 0.015613555908203125
+                },
+                "LSTM Multi Output": {
+                    "RMSE": 0.15143877267837524,
+                    "Training_Time": 86.4392876625061,
+                    "Inference_Time": 0.0796976089477539
+                },
+                "LSTM Multi Model": {
+                    "RMSE": 0.1530766636133194,
+                    "Training_Time": 195.27118349075317,
+                    "Inference_Time": 0.053536176681518555
+                },
+                "LSTM AR": {
+                    "RMSE": 0.148745596408844,
+                    "Training_Time": 79.62186002731323,
+                    "Inference_Time": 0.04690051078796387
+                }
+            }
+        },
+        {
+            "context_length": 256,
+            "horizon": 4,
+            "metrics": {
+                "TimesFM ZeroShot": {
+                    "RMSE": 0.5528321776283928,
+                    "Inference_Time": 14.203955173492432
+                },
+                "TimesFM Finetuned": {
+                    "RMSE": 0.11045258215864123,
+                    "Training_Time": 1931.4686827659607,
+                    "Inference_Time": 11.699445009231567
+                },
+                "ARIMA": {
+                    "RMSE": 0.2761551155735942,
+                    "Inference_Time": 55.80401039123535
+                },
+                "Persistence": {
+                    "RMSE": 0.29153573513031006,
+                    "Inference_Time": 0.007003307342529297
+                },
+                "LSTM Multi Output": {
+                    "RMSE": 0.11694195121526718,
+                    "Training_Time": 247.88058876991272,
+                    "Inference_Time": 0.06850695610046387
+                },
+                "LSTM Multi Model": {
+                    "RMSE": 0.13349993526935577,
+                    "Training_Time": 289.4166965484619,
+                    "Inference_Time": 0.1520838737487793
+                },
+                "LSTM AR": {
+                    "RMSE": 0.12958867847919464,
+                    "Training_Time": 147.90379190444946,
+                    "Inference_Time": 0.05340218544006348
+                }
+            }
+        },
+        {
+            "context_length": 256,
+            "horizon": 8,
+            "metrics": {
+                "TimesFM ZeroShot": {
+                    "RMSE": 0.5046898782259792,
+                    "Inference_Time": 9.265178680419922
+                },
+                "TimesFM Finetuned": {
+                    "RMSE": 0.14166541318112244,
+                    "Training_Time": 2087.511293888092,
+                    "Inference_Time": 11.786997318267822
+                },
+                "ARIMA": {
+                    "RMSE": 0.452865721113042,
+                    "Inference_Time": 60.06954383850098
+                },
+                "Persistence": {
+                    "RMSE": 0.4728253185749054,
+                    "Inference_Time": 0.019438743591308594
+                },
+                "LSTM Multi Output": {
+                    "RMSE": 0.13068684935569763,
+                    "Training_Time": 128.70349311828613,
+                    "Inference_Time": 0.04459404945373535
+                },
+                "LSTM Multi Model": {
+                    "RMSE": 0.1404637098312378,
+                    "Training_Time": 781.327849149704,
+                    "Inference_Time": 0.38842344284057617
+                },
+                "LSTM AR": {
+                    "RMSE": 0.11520587652921677,
+                    "Training_Time": 185.43877840042114,
+                    "Inference_Time": 0.0691678524017334
+                }
+            }
+        }
+    ]
+}
