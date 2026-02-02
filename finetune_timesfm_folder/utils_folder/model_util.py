@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from typing import Optional, Tuple
 from os import path
 import time
 import os
@@ -50,31 +49,6 @@ def get_model(horizon_len: int, load_weights: bool = False):
     return model.to(DEVICE).eval()
 
 
-@torch.no_grad()
-def fast_rmse_eval(model, loader, scaler=None):
-    """Optimized RMSE calculation entirely on GPU."""
-    se_sum = torch.tensor(0.0, device=DEVICE)
-    n = 0
-    model.eval()
-    
-    for x_ctx, x_pad, freq, y in loader:
-        x_ctx, x_pad, freq, y = [t.to(DEVICE, non_blocking=True) for t in [x_ctx, x_pad, freq, y]]
-        
-        # Predictions: [B, Patches, Horizon] -> Extract last patch mean
-        preds = model(x_ctx, x_pad.float(), freq)[..., 0]
-        # Target is the last value of the horizon
-        last_step_idx = y.shape[1] - 1
-        pred_last = preds[:, -1, last_step_idx]
-        target_last = y[:, -1]
-
-        # Accumulate squared error on GPU
-        diff = pred_last - target_last
-        se_sum += torch.sum(diff * diff)
-        n += y.shape[0]
-
-    rmse = torch.sqrt(se_sum / n).item()
-    return rmse
-
 
 # Plot predictions
 def plot_predictions(model, dataset, scaler, title, save_path):
@@ -108,8 +82,8 @@ def plot_predictions(model, dataset, scaler, title, save_path):
 
 
 
-def get_rmse(model: PatchedTimeSeriesDecoder, test_dataset: Dataset, scaler: StandardScaler) -> float:
-    """Calcula el RMSE evaluando ÚNICAMENTE el valor en el horizonte final H."""
+def get_rmse(model: PatchedTimeSeriesDecoder, test_dataset: Dataset, scaler: StandardScaler, num_pred: int) -> float:
+    """Computes RMSE evaluating just the last step in horizon H"""
     model.eval()
     device = next(model.parameters()).device
     
@@ -126,10 +100,10 @@ def get_rmse(model: PatchedTimeSeriesDecoder, test_dataset: Dataset, scaler: Sta
             predictions_mean = predictions[..., 0] 
             last_patch_pred = predictions_mean[:, -1, :] 
 
-            # Tomamos SOLO el último valor del horizonte (Paso H)
+            # Take only last step in horizon
             # x_future shape: [Batch, Horizon_Len] -> slice [:, -1]
-            final_step_pred = last_patch_pred[:, x_future.shape[1] - 1] 
-            final_step_target = x_future[:, -1]
+            final_step_pred = last_patch_pred[:, -num_pred:] 
+            final_step_target = x_future[:, -num_pred:]
 
             # Invertir escala (reshape para sklearn)
             preds_unscaled = scaler.inverse_transform(final_step_pred.cpu().numpy().reshape(-1, 1)).flatten()
@@ -143,11 +117,16 @@ def get_rmse(model: PatchedTimeSeriesDecoder, test_dataset: Dataset, scaler: Sta
 
 def compare_performance(context_len: int, 
                         horizon_len: int, 
+                        num_pred: int = 1,
                         freq_type: int = 0, 
                         real_data: bool = False,
                         more_models: bool = False,
                         plot_graph: bool = False):
     """Loads and compares zero-shot vs fine-tuned TimesFM performance."""
+
+    # Update horizon_len (number of predictions to be made in order to extract
+    # num_pred points with horizon H)
+    horizon_len = horizon_len + num_pred - 1
 
     # Load Data
     if real_data:
@@ -173,7 +152,7 @@ def compare_performance(context_len: int,
     model = get_model(horizon_len)
 
     t0 = time.time()
-    rmse = get_rmse(model, test_dataset, scaler)
+    rmse = get_rmse(model, test_dataset, scaler, num_pred)
     infer_t = time.time() - t0
 
     results["TimesFM ZeroShot"] = {
@@ -234,7 +213,7 @@ def compare_performance(context_len: int,
     train_time = time.time() - start_train
 
     t0 = time.time()
-    rmse_ft = get_rmse(finetune_model, test_dataset, scaler)
+    rmse_ft = get_rmse(finetune_model, test_dataset, scaler, num_pred)
     infer_t = time.time() - t0
 
     results["TimesFM Finetuned"] = {
@@ -294,7 +273,7 @@ def compare_performance(context_len: int,
                 x_future = x_future.to(device)
 
                 # Inverse-transform targets
-                target_last = x_future[:, -1].cpu().numpy().reshape(-1, 1)
+                target_last = x_future[:, -num_pred:].cpu().numpy().reshape(-1, 1)
                 all_targets.extend(scaler.inverse_transform(target_last).flatten())
 
                 # ARIMA
@@ -302,12 +281,12 @@ def compare_performance(context_len: int,
                 try:
                     for i in range(x_context.shape[0]):
                         context_np = x_context[i].cpu().numpy().flatten()
-                        # Usar la función statsmodels_auto_arima_
+
                         if params is None:
                             arima_pred, params = statsmodels_auto_arima_(context_np, horizon_len)
                         else:
                             arima_pred, _ = statsmodels_auto_arima_(context_np, horizon_len, params=params)
-                        arima_unscaled = scaler.inverse_transform(arima_pred[-1].reshape(-1, 1)).flatten()
+                        arima_unscaled = scaler.inverse_transform(arima_pred[-num_pred:].reshape(-1, 1)).flatten()
                         all_preds["ARIMA"].extend(arima_unscaled)
                     
                 except Exception as e:
@@ -318,7 +297,7 @@ def compare_performance(context_len: int,
                 s_pers = time.time()
                 for i in range(x_context.shape[0]):
                     pers_pred = predict_persistence(x_context[i].cpu().numpy(), horizon_len)
-                    pers_unscaled = scaler.inverse_transform(pers_pred[-1].reshape(-1,1)).flatten()
+                    pers_unscaled = scaler.inverse_transform(pers_pred[-num_pred:].reshape(-1,1)).flatten()
                     all_preds["Persistence"].extend(pers_unscaled)
                 all_times["Persistence"][0] += time.time() - s_pers
 
@@ -327,7 +306,7 @@ def compare_performance(context_len: int,
 
                 s_inf = time.time()
                 model_mo.eval()
-                out_mo = model_mo(x_lstm_input)[:, -1]
+                out_mo = model_mo(x_lstm_input)[:, -num_pred:]
                 all_preds["LSTM Multi Output"].extend(
                     scaler.inverse_transform(out_mo.cpu().numpy().reshape(-1, 1)).flatten()
                 )
@@ -342,11 +321,9 @@ def compare_performance(context_len: int,
                     step_pred = models_list[i](x_lstm_input).detach() # [Batch, 1]
                     preds_multi.append(step_pred)
 
-                # Concatenamos todos los pasos: [Batch, Horizon]
                 out_mm = torch.cat(preds_multi, dim=1) 
 
-                # Para tu métrica de "último paso" (Step H):
-                last_step_mm = out_mm[:, -1].cpu().numpy().reshape(-1, 1)
+                last_step_mm = out_mm[:, -num_pred:].cpu().numpy().reshape(-1, 1)
                 all_preds["LSTM Multi Model"].extend(
                     scaler.inverse_transform(last_step_mm).flatten()
                 )
@@ -354,7 +331,7 @@ def compare_performance(context_len: int,
 
                 # LSTM AutoRegressive
                 s_inf = time.time()
-                out_ar = model_ar(x_lstm_input)[:, -1]
+                out_ar = model_ar(x_lstm_input)[:, -num_pred:]
                 all_preds["LSTM AR"].extend(
                     scaler.inverse_transform(out_ar.cpu().numpy().reshape(-1, 1)).flatten()
                 )
