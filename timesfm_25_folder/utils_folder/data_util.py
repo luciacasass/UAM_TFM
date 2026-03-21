@@ -18,7 +18,9 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def estimate_period_from_acf(y, max_lag=500, min_lag=2):
+def estimate_period_from_acf(y: np.ndarray,
+                             max_lag:int = 500,
+                             min_lag:int = 2) -> int | None:
     """Estimates the dominant period of a time series using Autocorrelation Function (ACF).
 
     Args:
@@ -54,14 +56,13 @@ def estimate_period_from_acf(y, max_lag=500, min_lag=2):
 
 
 
-def sine_dataset(length: int, EASY_DATASET: bool = False, **kwargs):
+def sine_dataset(length: int, EASY_DATASET: bool = False):
     """Generates synthetic sine wave data with single or multiple seasonalities.
 
     Args:
         length: The number of data points to generate.
         EASY_DATASET: If True, generates a simple sine wave with a random delay. 
             If False, generates a complex multi-seasonal wave with noise.
-        **kwargs: Additional arguments (e.g., freq_type) passed from callers.
 
     Returns:
         A 1D numpy array containing the generated synthetic time series.

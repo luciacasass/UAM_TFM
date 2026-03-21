@@ -1,11 +1,17 @@
 import numpy as np
 import time
+from typing import Any, Dict, List, Optional, Union
 
 from sklearn.metrics import mean_squared_error
 
-def get_timesfm_metrics(model_tsfm, test_dataset, scaler, seasonal_comp=None, train_size=0):
+def get_timesfm_metrics(model_tsfm: Any,
+                        test_dataset: Any,
+                        scaler: Any,
+                        seasonal_comp: Optional[np.ndarray] = None,
+                        train_size:int = 0
+                        ) -> Dict[str, Dict[str, Union[float, List[float]]]]:
     """
-    Calcula RMSE, MSE y MAE for TimesFM 2.5 model over the test dataset.
+    Computes RMSE and inference time for TimesFM 2.5 model over the test dataset.
     """
     all_preds = []
     all_targets = []
