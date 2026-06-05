@@ -1,6 +1,7 @@
 # UAM_TFM
 
 **Autor:** Lucía Casas Sierra
+
 **Título:** Uso de modelos fundacionales para predicción de series temporales
 
 Repositorio correspondiente al Trabajo de Fin de Máster (TFM), centrado en la evaluación del modelo **TimesFM** y su comparación con otros modelos de predicción de series temporales. El proyecto incluye tanto experimentos de *fine-tuning* sobre TimesFM como pruebas de inferencia y evaluación utilizando versiones preentrenadas del modelo (*zero-shot*).
