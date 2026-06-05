@@ -31,7 +31,7 @@ TFM/
 
 ---
 
-# 1. Fine-tuning de TimesFM
+# 1. Evaluación con TimesFM 2.0
 
 La carpeta `finetune_timesfm_folder` contiene todo el código relacionado con el ajuste fino del modelo TimesFM y la evaluación comparativa frente a otros modelos de forecasting.
 
@@ -72,13 +72,9 @@ Sus principales funcionalidades son:
 
 - Generación de series temporales sintéticas basadas en funciones seno con diferentes niveles de complejidad.
 - Descarga y preparación de datos financieros reales mediante Yahoo Finance.
-- Carga y procesamiento de datasets de demanda energética almacenados en formato Parquet.
+- Carga y procesamiento de datasets de demanda energética.
 - Detección automática de periodos estacionales mediante la Función de Autocorrelación (ACF).
-- Aplicación de técnicas de descomposición temporal:
--   Diferenciación de tendencia.
--   Diferenciación estacional.
--   Eliminación de componentes estacionales mediante STL.
--   Eliminación conjunta de tendencia y estacionalidad.
+- Aplicación de técnicas de descomposición temporal.
 - Normalización de datos mediante StandardScaler.
 - Construcción de ventanas deslizantes para entrenamiento y evaluación.
 - Creación de datasets compatibles con la arquitectura TimesFM mediante la clase TimeSeriesDataset.
@@ -91,38 +87,42 @@ Módulo principal de entrenamiento, inferencia y evaluación de modelos.
 
 Incluye funcionalidades para:
 
-Descarga y carga automática del modelo preentrenado TimesFM desde Hugging Face.
-Construcción de modelos TimesFM para evaluación zero-shot y fine-tuning.
-Ejecución del proceso de ajuste fino mediante TimesFMFinetuner.
-Evaluación de modelos utilizando RMSE como métrica principal.
-Reconstrucción de predicciones escaladas y reintegración de componentes eliminadas durante la descomposición.
-Comparación experimental entre:
-TimesFM Zero-Shot.
-TimesFM Fine-Tuned.
-ARIMA.
-Persistence Forecast.
-Dummy Regressor.
-LSTM Multi-Output.
-LSTM Multi-Model.
-LSTM Autorregresivo.
-Medición de tiempos de entrenamiento e inferencia.
-Evaluación de estabilidad de modelos LSTM mediante múltiples ejecuciones.
-Generación de tablas resumen con métricas comparativas.
+- Descarga y carga automática del modelo preentrenado **TimesFM** desde Hugging Face.
+- Construcción de modelos TimesFM para evaluación *zero-shot* y *fine-tuning*.
+- Ejecución del proceso de ajuste fino mediante `TimesFMFinetuner`.
+- Evaluación de modelos utilizando RMSE como métrica principal.
+- Reconstrucción de predicciones escaladas y reintegración de componentes eliminadas durante la descomposición.
+- Comparación experimental entre:
+  - TimesFM Zero-Shot
+  - TimesFM Fine-Tuned
+  - ARIMA
+  - Dummy Regressor
+  - LSTM Multi-Output
+  - LSTM Multi-Model
+  - LSTM Autorregresivo
+- Medición de tiempos de entrenamiento e inferencia.
+- Evaluación de estabilidad de modelos LSTM mediante múltiples ejecuciones.
 
-La función principal del módulo es compare_performance(), que ejecuta de forma automatizada todo el proceso experimental, desde la carga de datos hasta la comparación final de resultados.
+La función principal del módulo es ```compare_performance()```, que ejecuta de forma automatizada todo el proceso experimental, desde la carga de datos hasta la comparación final de resultados.
 
 ### `comp_util.py`
 
-Módulo destinado a la evaluación y comparación de modelos.
+Este módulo implementa la construcción y entrenamiento de los modelos baseline utilizados como referencia en los experimentos.
 
-Incluye utilidades para:
+Incluye:
 
-- Cálculo de métricas de error.
-- Comparación cuantitativa entre modelos.
-- Organización y almacenamiento de resultados.
-- Generación de tablas resumen para el análisis experimental.
+- Modelos clásicos de series temporales como ARIMA.
+- Baselines simples como el modelo de persistencia y Dummy Regressor.
+- Arquitecturas LSTM en distintas variantes:
+  - Multi-output
+  - Multi-model
+  - Autoregresivo
+- Funciones de entrenamiento con *early-stopping*.
+- Evaluación de modelos mediante conjuntos de validación.
+- Control de reproducibilidad mediante fijación de semillas.
+- Selección de hiperparámetros en modelos ARIMA.
 
-Este archivo constituye el núcleo de la comparación entre TimesFM y los modelos de referencia utilizados en el estudio.
+Proporciona las implementaciones necesarias para generar los modelos de referencia frente a los que se comparan los enfoques principales del estudio.
 
 ### `plot_util.py`
 
@@ -168,23 +168,22 @@ Contiene funciones auxiliares específicas para la evaluación de TimesFM 2.5.
 
 ### `data_util.py`
 
-Funciones para:
-
-- Lectura de datos.
-- Preprocesamiento.
-- Construcción de conjuntos de evaluación.
-- Adaptación de datos al formato requerido por los modelos.
+Módulo ya descrito en la sección anterior.
 
 ### `timesfm_25_util.py`
 
-Módulo específico para la interacción con TimesFM 2.5.
+Este módulo implementa la evaluación del modelo TimesFM 2.5 sobre conjuntos de prueba.
 
-Incluye funcionalidades relacionadas con:
+Incluye:
 
-- Carga del modelo.
-- Configuración de parámetros de inferencia.
-- Generación de predicciones.
-- Gestión de entradas y salidas del modelo.
+- Generación de predicciones mediante inferencia del modelo.
+- Desescalado de predicciones a la escala original.
+- Reintegración de componentes estacionales cuando aplica.
+- Cálculo de métricas de error (RMSE).
+- Medición del tiempo de inferencia.
+- Organización de resultados para análisis comparativo.
+
+Se centra en la evaluación consistente del rendimiento del modelo sobre datos no vistos, incluyendo el ajuste de escala y alineación temporal de las predicciones.
 
 ### `plot_util.py`
 
