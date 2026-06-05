@@ -56,13 +56,14 @@ def estimate_period_from_acf(y: np.ndarray,
 
 
 
-def sine_dataset(length: int, EASY_DATASET: bool = False):
+def sine_dataset(length: int, EASY_DATASET: bool = False, **kwargs):
     """Generates synthetic sine wave data with single or multiple seasonalities.
 
     Args:
         length: The number of data points to generate.
         EASY_DATASET: If True, generates a simple sine wave with a random delay. 
             If False, generates a complex multi-seasonal wave with noise.
+        **kwargs: Additional arguments (e.g., freq_type) passed from callers.
 
     Returns:
         A 1D numpy array containing the generated synthetic time series.
@@ -167,7 +168,7 @@ class TimeSeriesDataset(Dataset):
         input_padding = torch.zeros_like(x_context)
         freq = torch.tensor([self.freq_type], dtype=torch.long)
 
-        return x_context, input_padding, freq, x_future
+        return x_context, input_padding, freq, x_future, index
     
 
 
@@ -308,6 +309,8 @@ def prepare_datasets(series: np.ndarray,
     train_input = train_input[h_diff:]
     test_input = test_input[h_diff:]
 
+    adjusted_train_size = train_size + h_diff
+
     train_scaled = scaler.transform(train_input.reshape(-1, 1)).flatten()
     test_scaled = scaler.transform(test_input.reshape(-1, 1)).flatten()
 
@@ -322,7 +325,7 @@ def prepare_datasets(series: np.ndarray,
                                     horizon_length=horizon_length,
                                     freq_type=freq_type)
 
-    return train_dataset, test_dataset, scaler, removed_component, train_size
+    return train_dataset, test_dataset, scaler, removed_component, adjusted_train_size, test_raw[h_diff:]
 
 
 
@@ -359,7 +362,7 @@ def get_real_data(context_len: int,
     if len(time_series) == 0:
         raise ValueError("Time Series is empty after NaN clean up")
 
-    train_dataset, test_dataset, scaler, seas, train_size = prepare_datasets(
+    train_dataset, test_dataset, scaler, seas, train_size, test_input = prepare_datasets(
         series=time_series,
         context_length=context_len,
         horizon_length=horizon_len,
@@ -374,7 +377,7 @@ def get_real_data(context_len: int,
     print(f"- Training samples: {len(train_dataset)}")
     print(f"- Test samples: {len(test_dataset)}")
     print(f"- Using frequency type: {freq_type}")
-    return train_dataset, test_dataset, scaler, seas, train_size
+    return train_dataset, test_dataset, scaler, seas, train_size, test_input
 
 
 
@@ -400,7 +403,7 @@ def get_data_synthetic(context_len: int,
     # Fixed the call to match sine_dataset's new parameters
     time_series = sine_dataset(length=2264, freq_type=freq_type)
     
-    train_dataset, test_dataset, scaler, seas, train_size = prepare_datasets(
+    train_dataset, test_dataset, scaler, seas, train_size, test_input = prepare_datasets(
         series=time_series,
         context_length=context_len,
         horizon_length=horizon_len,
@@ -415,7 +418,7 @@ def get_data_synthetic(context_len: int,
     print(f"- Training samples: {len(train_dataset)}")
     print(f"- Test samples: {len(test_dataset)}")
     print(f"- Using frequency type: {freq_type}")
-    return train_dataset, test_dataset, scaler, seas, train_size
+    return train_dataset, test_dataset, scaler, seas, train_size, test_input
 
 
 
@@ -466,7 +469,9 @@ def get_demand_data(file_path: str,
     max_repeats = 2 if freq_str == "D" else 7*2
 
     for i in range(max_repeats):
+
         df['demand'] = df['demand'].fillna(df['demand'].shift(pp))
+        
         # if no more NaNs exist, stop the loop early
         if not df['demand'].isnull().any():
             break
@@ -476,12 +481,12 @@ def get_demand_data(file_path: str,
 
     time_series = df["demand"].values
     if "horario" in file_path:
-        time_series = time_series[1680:5040]
+        time_series = time_series[1680:1680+3360]
         
     if len(time_series) == 0:
         raise ValueError("Time Series is empty after NaN clean up")
 
-    train_dataset, test_dataset, scaler, seas, train_size = prepare_datasets(
+    train_dataset, test_dataset, scaler, seas, train_size, test_input = prepare_datasets(
         series=time_series,
         context_length=context_len,
         horizon_length=horizon_len,
@@ -496,4 +501,4 @@ def get_demand_data(file_path: str,
     print(f"- Training samples: {len(train_dataset)}")
     print(f"- Test samples: {len(test_dataset)}")
     print(f"- Using frequency type: {freq_type}")
-    return train_dataset, test_dataset, scaler, seas, train_size
+    return train_dataset, test_dataset, scaler, seas, train_size, test_input
