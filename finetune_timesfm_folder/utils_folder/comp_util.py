@@ -12,65 +12,98 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
 
+from sklearn.metrics import mean_squared_error
+from sklearn.dummy import DummyRegressor
+
 from utils_folder.data_util import *
 
+import os
+import random
 
-# # ARIMA Prediction
-# def predict_arima_sktime(context_vals, horizon_len):
-#     forecaster = AutoARIMA(
-#         sp=1, 
-#         suppress_warnings=True, 
-#         error_action='ignore', # Ignores models that fail to fit
-#         stationary=False,      # Allows it to search for non-stationary models
-#         information_criterion='aic',
-#         maxiter=50
-#     )
+
+def seed_everything(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) # if you are using multi-GPU
     
-#     y_train = pd.Series(context_vals)
-    
-#     try:
-#         forecaster.fit(y_train)
+    # Critical for CuDNN reproducibility
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
-#         print("ARIMA model selected:")
-#         print(f"Order (p,d,q): {forecaster.order}")
-#         print(f"Seasonal order (P,D,Q,s): {forecaster.seasonal_order}")
-#         print(f"AIC del modelo: {forecaster.aic():.2f}")
-
-#         fh = np.arange(1, horizon_len + 1)
-#         forecast = forecaster.predict(fh)   # generates all n future steps at once
-#         return forecast.values
-#     except Exception as e:
-#         # Fallback: if ARIMA fails completely on a window, 
-#         # return the last value (Persistence) so the loop doesn't crash.
-#         return np.full(horizon_len, context_vals[-1])
+seed_everything(42)
 
 
-def statsmodels_auto_arima_(context_vals, horizon_len, params=None, max_p=4, max_q=2):
-    y_train = pd.Series(context_vals)
+def select_d(train_data, max_d=2, alpha=0.05, min_obs=30):
+    d = 0
+    y = train_data.copy()
+    y = pd.Series(y)
+
+    while d <= max_d:
+        y_clean = y.dropna()
+        # Avoid ADF with few data points
+        if len(y_clean) < min_obs:
+            break
+
+        pvalue = adfuller(y_clean, autolag='AIC')[1]
+        if pvalue < alpha:
+            return d
+
+        y = y.diff()
+        d += 1
+
+    return d
+
+def statsmodels_auto_arima_(context_vals, horizon_len=None, params=None, max_p=8, max_q=8):
 
     if params is None:
+        train_size = int(0.8 * len(context_vals))
+        train_data = context_vals[:train_size]
+        val_data = context_vals[train_size:]
+
         # Find optimal d value
-        d = 0
-        y_diff = y_train.copy()
-        while d <= 2:
-            if adfuller(y_diff.dropna())[1] < 0.05:
-                break
-            y_diff = y_diff.diff()
-            d += 1
+        d = select_d(train_data)
         
-        # Find (p, q) now using stationary data
-        stat_data = y_train.diff(d).dropna() if d > 0 else y_train
-        res = sm.tsa.arma_order_select_ic(stat_data, max_ar=max_p, max_ma=max_q, ic='aic')
-        p, q = res.aic_min_order
+        best_rmse = float('inf')
+        p, q = 0, 0
+        
+        # Using grid search once param d is set
+        for cur_p in range(max_p + 1):
+            for cur_q in range(max_q + 1):
+                try:
+                    # Fit on train
+                    model = ARIMA(train_data, order=(cur_p, d, cur_q)).fit()
+                    # Validate on validation length
+                    preds = model.forecast(steps=len(val_data))
+                    rmse = np.sqrt(mean_squared_error(val_data, preds))
+                    
+                    if rmse < best_rmse:
+                        best_rmse = rmse
+                        p, q = cur_p, cur_q
+                except:
+                    continue
+                
+        if (p, d, q) == (0, 0, 0):
+            warnings.warn(
+                "Best ARIMA model is (0,0,0). This may indicate the series is white noise or no structure was found.",
+                UserWarning
+            )
     else:
         p, d, q = params
     
     # Create ARIMA model
-    model = ARIMA(y_train, order=(p, d, q)).fit()
+    if horizon_len is not None:
+        y_test = pd.Series(context_vals)
+        model = ARIMA(y_test, order=(p, d, q)).fit()
+        
+        # Prediction for future horizon
+        forecast = model.forecast(steps=horizon_len)
+        return forecast.to_numpy(), (p, d, q)
+    else:
+        return None, (p, d, q)
     
-    # Prediction for future horizon
-    forecast = model.forecast(steps=horizon_len)
-    return forecast.to_numpy(), (p, d, q)
 
 
 # Persistence Model Prediction
@@ -78,17 +111,23 @@ def predict_persistence(context_vals, horizon_len):
     return np.full(horizon_len, context_vals[-1])
 
 
+# Dummy Regressor Model Prediction
+def predict_dummy(model, context_vals):
+    x_input = context_vals.reshape(1, -1)
+    preds = model.predict(x_input)
+
+    return preds.flatten()
+
+
 def split_train_val(dataset):
     train_size = int(0.8 * len(dataset))
-    val_internal_size = len(dataset) - train_size
-    
-    train_ds, val_ds = torch.utils.data.random_split(
-        dataset, [train_size, val_internal_size],
-        generator=torch.Generator().manual_seed(42)
-    )
 
-    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=32, shuffle=False, pin_memory=True)
+    # Slice sequentially, no shuffle
+    train_ds = torch.utils.data.Subset(dataset, range(0, train_size))
+    val_ds = torch.utils.data.Subset(dataset, range(train_size, len(dataset)))
+
+    train_loader = DataLoader(train_ds, batch_size=32, shuffle=False)
+    val_loader = DataLoader(val_ds, batch_size=32, shuffle=False)
 
     return train_loader, val_loader
 
@@ -97,7 +136,7 @@ def split_train_val(dataset):
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=64, num_layers=2, output_size=128):
         super(LSTMModel, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)  # , dropout=0.2??
         self.fc = nn.Linear(hidden_size, output_size)
         
     def forward(self, x):
@@ -108,7 +147,7 @@ class AutoregressiveLSTM(nn.Module):
     def __init__(self, horizon_len, input_size=1, hidden_size=64, num_layers=2):
         super().__init__()
         self.horizon_len = horizon_len
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)  # , dropout=0.2??
         self.fc = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
@@ -205,7 +244,10 @@ def train_with_early_stopping(
     model.eval()
     
 
-def train_multi_output(train_dataset, horizon_len, device):
+def train_multi_output(train_dataset, horizon_len, device, seed=42):
+    
+    seed_everything(seed)
+
     model = LSTMModel(1, 64, 2, horizon_len).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
@@ -220,14 +262,18 @@ def train_multi_output(train_dataset, horizon_len, device):
     return model, time.time() - start
 
 
-def train_multi_model(train_dataset, horizon_len, device):
+def train_multi_model(train_dataset, horizon_len, num_pred, device, seed=42):
     criterion = nn.MSELoss()
     train_loader, val_loader = split_train_val(train_dataset)
 
     models = []
     start = time.time()
 
-    for i in range(horizon_len):
+    start_idx = horizon_len - num_pred
+
+    for i in range(start_idx, horizon_len):
+        seed_everything(seed + i)
+        
         model = LSTMModel(input_size=1, hidden_size=64, num_layers=2, output_size=1).to(device)
         opt = torch.optim.Adam(model.parameters(), 1e-3)
 
@@ -242,7 +288,9 @@ def train_multi_model(train_dataset, horizon_len, device):
 
 
 
-def train_autoregressive(train_dataset, horizon_len, device):
+def train_autoregressive(train_dataset, horizon_len, device, seed=42):
+
+    seed_everything(seed)
 
     model = AutoregressiveLSTM(horizon_len=horizon_len).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
