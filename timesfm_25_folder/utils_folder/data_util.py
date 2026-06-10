@@ -168,7 +168,7 @@ class TimeSeriesDataset(Dataset):
         input_padding = torch.zeros_like(x_context)
         freq = torch.tensor([self.freq_type], dtype=torch.long)
 
-        return x_context, input_padding, freq, x_future, index
+        return x_context, input_padding, freq, x_future
     
 
 
@@ -188,7 +188,7 @@ def prepare_datasets(series: np.ndarray,
         horizon_length: Output window size.
         freq_type: Frequency identifier for the model.
         train_split: Fraction of data to use for training (0.0 to 1.0).
-        decompose: Type of decomposition ("trend_diff", "seasonal_diff", "seasonal", "both").
+        decompose: Type of decomposition ("trend_diff", "seasonal").
         period: Seasonal period. If "auto", it's estimated via ACF.
 
     Returns:
@@ -218,13 +218,11 @@ def prepare_datasets(series: np.ndarray,
     train_raw = series[:train_size]
     test_raw = series[train_size:]
 
-    # test too?
-
     train_size = len(train_raw)
     test_size = len(test_raw)
     
     removed_component = np.zeros(train_size + test_size)
-    if decompose in ["seasonal_diff", "seasonal", "both"] and period == "auto":
+    if decompose == "seasonal" and period == "auto":
             period = estimate_period_from_acf(train_raw)
             if period is None: 
                 print("Warning: No period detected, falling back to no decomposition.")
@@ -241,30 +239,7 @@ def prepare_datasets(series: np.ndarray,
         test_input = pd.Series(test_combined).diff().dropna().values
         removed_component[train_size:] = pd.Series(test_combined).shift(1).dropna().values
 
-    elif decompose == "seasonal_diff":
-        # Train Diff
-        # train_input = pd.Series(train_raw).diff(periods=period).fillna(0).values
-        # removed_component[:train_size] = pd.Series(train_raw).shift(period).fillna(train_raw[0]).values
-
-        # test_combined = np.concatenate([train_raw[-period:], test_raw])
-        # test_input = pd.Series(test_combined).diff(periods=period).dropna().values
-        # removed_component[train_size:] = pd.Series(test_combined).shift(period).dropna().values
-        train_series = pd.Series(train_raw)
-        train_diffs = train_series.diff(periods=period)
-
-        mean_diff = train_diffs.mean()
-        train_input = train_diffs.fillna(mean_diff).values
-        
-        # For the removed component, use bfill 
-        removed_component[:train_size] = train_series.shift(period).bfill().values
-
-        test_combined = np.concatenate([train_raw[-period:], test_raw])
-        test_combined_series = pd.Series(test_combined)
-        
-        test_input = test_combined_series.diff(periods=period).dropna().values
-        removed_component[train_size:] = test_combined_series.shift(period).dropna().values
-    
-    elif decompose in ["seasonal", "both"]:
+    elif decompose == "seasonal":
     
         # Decompose training data
         stl = STL(train_raw, period=period, robust=True).fit()
@@ -275,28 +250,13 @@ def prepare_datasets(series: np.ndarray,
         reps = int(np.ceil(len(test_raw) / period))
         seasonal_test = np.tile(last_cycle, reps)[:len(test_raw)]
 
-        if decompose == "seasonal":
-            # Keep Trend + Residual (Remove only Season)
-            train_input = train_raw - seasonal_train
-            test_input = test_raw - seasonal_test
+        # Keep Trend + Residual (Remove only Season)
+        train_input = train_raw - seasonal_train
+        test_input = test_raw - seasonal_test
 
-            removed_component[:train_size] = seasonal_train
-            removed_component[train_size:] = seasonal_test
-        elif decompose == "both":
-            # Keep only Residual (Remove Season + Trend)
-            indices = np.arange(len(stl.trend)).reshape(-1, 1)
-            lr = LinearRegression().fit(indices, stl.trend)
-            
-            # Project the trend line into the test indices
-            test_indices = np.arange(len(stl.trend), \
-                                     len(stl.trend) + len(test_raw)).reshape(-1, 1)
-            projected_trend_test = lr.predict(test_indices)
-            
-            train_input = stl.resid
-            test_input = test_raw - seasonal_test - projected_trend_test
-            
-            removed_component[:train_size] = seasonal_train + stl.trend
-            removed_component[train_size:] = seasonal_test + projected_trend_test
+        removed_component[:train_size] = seasonal_train
+        removed_component[train_size:] = seasonal_test
+
     else:
         train_input = train_raw
         test_input = test_raw
@@ -354,7 +314,10 @@ def get_real_data(context_len: int,
     """
 
     df = yf.download("AAPL", start="2010-01-01", end="2019-01-01")
-    df_clean = df["Close"].dropna()
+    df_clean = df["Close"].astype(float)
+
+    df_clean = df_clean.interpolate()
+    df_clean = df_clean.dropna()
 
     time_series = df_clean.values
     time_series = time_series[np.isfinite(time_series)]
