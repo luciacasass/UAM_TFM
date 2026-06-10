@@ -31,7 +31,7 @@ REPO_ID = "google/timesfm-2.0-500m-pytorch"
 
 
 # Model creation
-def get_model(context_len: int, horizon_len: int, load_weights: bool = False):
+def get_model():
     hf_path = snapshot_download(REPO_ID)
     hparams = TimesFmHparams(
         backend=str(DEVICE),
@@ -263,7 +263,7 @@ def compare_performance(context_len: int,
 
     # Zero-Shot (No Fine-Tuning) Performance
     print("\nZero-Shot (Pre-trained) Evaluation", flush=True)
-    model = get_model(context_len, horizon_len)
+    model = get_model()
 
     t0 = time.time()
     rmse, preds_zs, targets_zs = get_rmse(model, test_dataset, scaler, 
@@ -292,7 +292,7 @@ def compare_performance(context_len: int,
     if finetune_model is None:
         # Complete process
         print("\nFine-Tuning Process", flush=True)
-        finetune_model = get_model(context_len, horizon_len)
+        finetune_model = get_model()
 
         config = FinetuningConfig(
             batch_size=64,
